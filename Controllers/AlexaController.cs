@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 using ScrobblerApi.Models.DTOs;
-using ScrobblerApi.Services;
 
 namespace ScrobblerApi.Controllers;
 
@@ -8,65 +8,69 @@ namespace ScrobblerApi.Controllers;
 [Route("api/[controller]")]
 public class AlexaController : ControllerBase
 {
-    private readonly IScrobbleService _scrobbleService;
-
-    // Injeção de dependência do serviço
-    public AlexaController(IScrobbleService scrobbleService)
-    {
-        _scrobbleService = scrobbleService;
-    }
-
     [HttpPost("webhook")]
-    public async Task<IActionResult> ReceiveRequest([FromBody] AlexaRequest request)
+    public IActionResult ReceiveRequest([FromBody] JsonElement jsonRequest)
     {
-        // 1. GUARDIÃO 1: Se a sessão está sendo encerrada ou deu erro na Amazon, temos que ficar em silêncio.
-        if (request.Request.Type == "SessionEndedRequest")
+        try
         {
-            return Ok(); // O 200 OK vazio evita o INVALID_RESPONSE
-        }
+            var root = jsonRequest.GetProperty("request");
+            var requestType = root.GetProperty("type").GetString();
 
-        // 2. GUARDIÃO 2: O usuário disse apenas "Alexa, abra toca discos inteligente"
-        if (request.Request.Type == "LaunchRequest")
-        {
-            return Ok(CreateResponse("Bem-vindo ao toca discos. Qual vinil você vai ouvir agora?", false));
-        }
+            if (requestType == "SessionEndedRequest") return Ok();
 
-        // 3. FLUXO PRINCIPAL: Intent de Scrobble
-        if (request.Request.Type == "IntentRequest" && request.Request.Intent?.Name == "ScrobblarVinilIntent")
-        {
-            var intent = request.Request.Intent;
-            var slots = intent.Slots;
-
-            if (intent.ConfirmationStatus == "DENIED")
+            if (requestType == "LaunchRequest")
             {
-                return Ok(CreateResponse("Tudo bem. O scrobble foi cancelado.", true));
+                return Ok(CreateResponse("Bem-vindo ao toca discos. Qual vinil você vai registrar?", false));
             }
 
-            string vinylName = slots != null && slots.ContainsKey("vinylName") ? slots["vinylName"].Value : string.Empty;
-            string groupName = slots != null && slots.ContainsKey("groupName") ? slots["groupName"].Value : string.Empty;
-
-            if (!string.IsNullOrEmpty(vinylName))
+            if (requestType == "IntentRequest")
             {
-                if (intent.ConfirmationStatus == "NONE")
+                var intent = root.GetProperty("intent");
+                var intentName = intent.GetProperty("name").GetString();
+
+                if (intentName == "ScrobblarVinilIntent")
                 {
-                    return Ok(CreateDelegateResponse());
+                    string confirmationStatus = "NONE";
+                    if (intent.TryGetProperty("confirmationStatus", out var confStatusProp))
+                    {
+                        confirmationStatus = confStatusProp.GetString() ?? "NONE";
+                    }
+
+                    if (confirmationStatus == "DENIED")
+                    {
+                        return Ok(CreateResponse("Tudo bem, scrobble cancelado.", true));
+                    }
+
+                    string vinylName = "";
+                    string groupName = "";
+                    
+                    if (intent.TryGetProperty("slots", out JsonElement slots))
+                    {
+                        if (slots.TryGetProperty("vinylName", out JsonElement vSlot) && vSlot.TryGetProperty("value", out JsonElement vVal))
+                            vinylName = vVal.GetString() ?? "";
+
+                        if (slots.TryGetProperty("groupName", out JsonElement gSlot) && gSlot.TryGetProperty("value", out JsonElement gVal))
+                            groupName = gVal.GetString() ?? "";
+                    }
+
+                    if (confirmationStatus == "NONE" && !string.IsNullOrEmpty(vinylName))
+                    {
+                        return Ok(CreateDelegateResponse());
+                    }
+
+                    return Ok(CreateResponse($"Feito! Registrei o disco {vinylName} do {groupName}.", true));
                 }
-
-                // Logamos no terminal para validar
-                Console.WriteLine($"\n========================================");
-                Console.WriteLine($"[SUCESSO] A Alexa bateu no localhost!");
-                Console.WriteLine($"[DADOS] Vinil: {vinylName} | Artista: {groupName}");
-                Console.WriteLine($"========================================\n");
-
-                return Ok(CreateResponse($"Tudo certo! Loguei o disco {vinylName}, do {groupName} no terminal.", true));
             }
-        }
 
-        // 4. FALLBACK: Se ela mandou uma IntentRequest que não conhecemos ou veio sem dados
-        return Ok(CreateResponse("Desculpe, não consegui entender o nome do vinil.", true));
+            return Ok(CreateResponse("Desculpe, não reconheci essa ação.", true));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n[ERRO FATAL NO C#] {ex.Message}\n{ex.StackTrace}\n");
+            return Ok(CreateResponse("Deu algum erro interno no código do backend.", true));
+        }
     }
-    
-    // Método auxiliar para criar respostas faladas limpas
+
     private AlexaResponse CreateResponse(string speechText, bool endSession)
     {
         var response = new AlexaResponse();
@@ -75,20 +79,12 @@ public class AlexaController : ControllerBase
         return response;
     }
 
-    // Método auxiliar para delegar a conversa de volta para a Alexa (para ela fazer a pergunta de confirmação)
     private dynamic CreateDelegateResponse()
     {
         return new
         {
             version = "1.0",
-            response = new
-            {
-                directives = new[]
-                {
-                    new { type = "Dialog.Delegate" }
-                },
-                shouldEndSession = false
-            }
+            response = new { directives = new[] { new { type = "Dialog.Delegate" } }, shouldEndSession = false }
         };
     }
 }
