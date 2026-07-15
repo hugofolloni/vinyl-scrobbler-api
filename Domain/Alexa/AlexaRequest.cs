@@ -25,7 +25,6 @@ public class IntentDetails
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
-    // NOVO: Lê o status da confirmação (NONE, CONFIRMED ou DENIED)
     [JsonPropertyName("confirmationStatus")]
     public string ConfirmationStatus { get; set; } = "NONE";
 

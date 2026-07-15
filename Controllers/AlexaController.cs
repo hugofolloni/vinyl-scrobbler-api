@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using ScrobblerApi.Models.DTOs;
+using ScrobblerApi.Services;
 
 namespace ScrobblerApi.Controllers;
 
@@ -8,8 +9,15 @@ namespace ScrobblerApi.Controllers;
 [Route("api/[controller]")]
 public class AlexaController : ControllerBase
 {
+    private readonly ScrobbleService _scrobbleService;
+
+    public AlexaController(ScrobbleService scrobbleService)
+    {
+        _scrobbleService = scrobbleService;
+    }
+
     [HttpPost("webhook")]
-    public IActionResult ReceiveRequest([FromBody] JsonElement jsonRequest)
+    public async Task<IActionResult> ReceiveRequest([FromBody] JsonElement jsonRequest)
     {
         try
         {
@@ -20,7 +28,7 @@ public class AlexaController : ControllerBase
 
             if (requestType == "LaunchRequest")
             {
-                return Ok(CreateResponse("Bem-vindo ao toca discos. Qual vinil você vai registrar?", false));
+                return Ok(CreateResponse("Bem-vindo ao toca discos inteligente. Qual vinil você vai registrar?", false));
             }
 
             if (requestType == "IntentRequest")
@@ -51,14 +59,27 @@ public class AlexaController : ControllerBase
 
                         if (slots.TryGetProperty("groupName", out JsonElement gSlot) && gSlot.TryGetProperty("value", out JsonElement gVal))
                             groupName = gVal.GetString() ?? "";
+                        
+                        Console.WriteLine($"\nA Alexa encontrou o álbum {vinylName} de {groupName}");
                     }
 
                     if (confirmationStatus == "NONE" && !string.IsNullOrEmpty(vinylName))
                     {
                         return Ok(CreateDelegateResponse());
                     }
+                    
+                    long unixTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    
+                    bool sucesso = await _scrobbleService.ScrobbleAlbumAsync(groupName, vinylName, unixTimestamp);
 
-                    return Ok(CreateResponse($"Feito! Registrei o disco {vinylName} do {groupName}.", true));
+                    if (sucesso)
+                    {
+                        return Ok(CreateResponse($"Feito! O disco {vinylName} já está no seu perfil do LastFM.", true));
+                    }
+                    else
+                    {
+                        return Ok(CreateResponse("Puxa, deu algum erro ao conectar com o servidor do LastFM.", true));
+                    }
                 }
             }
 
