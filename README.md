@@ -1,37 +1,31 @@
-
-# Vinyl Scrobbler API
+# Vinyl Scrobbler API 🎧
 
 ## Overview
-
-Vinyl Scrobbler is a centralized backend ecosystem designed to bridge physical vinyl record playback with digital tracking on Last.fm. This C# .NET 9 Web API serves as the core engine, receiving scrobble requests from multiple sources—primarily a custom Amazon Alexa Skill ("toca discos inteligente") and a planned Web UI—and executing the business logic to authenticate and log tracks via the Last.fm API.
+Vinyl Scrobbler is a centralized backend ecosystem designed to bridge physical vinyl record playback with digital tracking on Last.fm. This C# .NET 9 Web API serves as the core engine, receiving scrobble requests from multiple sources—primarily a custom Amazon Alexa Skill ("vinil inteligente") and a planned Web UI—and executing the business logic to authenticate and log tracks via the Last.fm API.
 
 ## Architecture Pattern
-
 The project follows a clean **Controller-Service-Repository** architecture to ensure business logic is decoupled from input sources:
-
-* **Controllers:** Act as the entry points (`AlexaController` for voice webhooks, `WebController` for the frontend).
-* **Services:** Contain the core business rules (`ScrobbleService`, `LastFmAuthService`).
-* **Repositories:** Handle data persistence (User mapping, Last.fm Session Keys).
+* **Controllers:** Act as the entry points (`AlexaController` for voice webhooks, `AuthController` for the authentication flow, and future controllers for the Web UI).
+* **Services:** Contain the core business rules (`ScrobbleService` for batch assembly and Last.fm communication, `LastFmAuthService` for encryption and signatures).
+* **Repositories (Next Phase):** Will handle data persistence (mapping Alexa users to their respective Last.fm Session Keys).
 
 ## Tech Stack
-
 * **Framework:** .NET 9.0 (ASP.NET Core Web API)
 * **Language:** C# 13
 * **API Documentation:** Swashbuckle (Swagger)
 * **External APIs:** Last.fm API v2.0
 * **Voice Integration:** Alexa Skills Kit (ASK) Custom Skill JSON Webhooks
-* **Development Tools:** .NET CLI, Visual Studio Code
+* **Development Tools:** .NET CLI, Visual Studio Code, Ngrok
 
 ## Getting Started
 
 ### Prerequisites
-
 * [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 * Visual Studio Code
 * A [Last.fm API Developer Account](https://www.last.fm/api)
+* Ngrok installed globally for local tunneling
 
 ### Running Locally
-
 1. Clone the repository and navigate to the project root.
 2. Restore dependencies:
 ```bash
@@ -47,59 +41,63 @@ dotnet run
 ```
 
 
-4. Access the Swagger UI at `http://localhost:<port>` to inspect the available endpoints.
+4. Access the Swagger UI at `http://localhost:<port>` to inspect and test the endpoints.
 
 ---
 
-## 🗺️ Development Roadmap & To-Do List
+## 🗺️ Development Roadmap & Status
 
-This section tracks the project's progression. It is highly descriptive to provide context for AI assistants aiding in the development process.
+This section tracks the project's progression and documents the technical solutions applied to overcome specific infrastructure and integration challenges.
 
 ### Phase 1: Foundation & Project Setup
 
-* [x] **Initialize Repository:** Create the .NET 9 Web API using the standard CLI template.
-* [x] **Clean Architecture Setup:** Remove boilerplate (`WeatherForecast`) and establish `Controllers`, `Services`, `Repositories`, and `Models` directories.
-* [x] **Swagger Configuration:** Implement Swashbuckle for API exploration.
-* *Note:* Resolved native .NET 9 `Microsoft.AspNetCore.OpenApi` conflicts with Swashbuckle by removing the native package and enforcing the standard 3rd-party library.
+* [x] **Initialize Repository:** Created a clean .NET 9 Web API using the standard CLI template.
+* [x] **Clean Architecture Setup:** Removed boilerplate files (`WeatherForecast`) and established the core domain folders.
+* [x] **Swagger Configuration:** Integrated Swashbuckle for interactive API documentation.
+* *Note:* Resolved native .NET 9 OpenAPI conflicts by injecting stable third-party packages.
 
 
-* [x] **Alexa DTOs (Data Transfer Objects):** Create strictly typed C# models (`AlexaRequest`, `AlexaResponse`) mapping `camelCase` JSON properties to `PascalCase` C# properties to handle the Amazon ASK webhook format.
-* [x] **Webhook Endpoint:** Implement `POST /api/alexa/webhook` to receive interactions, logging the raw JSON and returning a valid minimum viable response to keep the Alexa session healthy.
+* [x] **Webhook Endpoint:** Implemented the `POST /api/alexa/webhook` endpoint.
 
 ### Phase 2: Alexa Voice Interaction Model
 
-* [x] **Invocation Name:** Set up the custom skill in the Alexa Developer Console with the invocation name `"toca discos inteligente"`.
-* [ ] **Define Intents & Slots:** Create the `ScrobblarVinilIntent` in the Alexa Console. Define an `AMAZON.MusicAlbum` or `AMAZON.SearchQuery` slot named `nomeDoVinil`.
-* [ ] **Train Model:** Add utterances (e.g., *"fazer scrobble do vinil {nomeDoVinil}"*) and build the voice model in the console.
-* [ ] **Parse Intent in C#:** Update the `AlexaController` to inspect `AlexaRequest.Request.Intent.Name` and extract the `nomeDoVinil` slot value from the payload.
-* [ ] **Dynamic Voice Feedback:** Update the `AlexaResponse` to reply dynamically (e.g., *"Preparando para scrobblar o disco {nomeDoVinil}."*).
+* [x] **Invocation Name:** Configured the custom skill with the invocation name `"vinil inteligente"`.
+* *Design Decision:* Changed from "toca discos inteligente" to avoid accidental triggers activating native music streaming services (such as Spotify or Amazon Music).
+
+
+* [x] **Removal of Conflicting Verbs:** Banned the word "tocar" (to play) from Sample Utterances, prioritizing data action verbs like "registrar" (register), "scrobbler", "salvar" (save), and "anotar" (log).
+* [x] **Dynamic Parsing in C#:** Replaced strict DTOs with `JsonElement` in `AlexaController`.
+* *Note:* This change shields the API against deserialization errors caused by deep structural differences between `LaunchRequest`, `IntentRequest`, and `SessionEndedRequest` payloads sent by Amazon.
+
+
+* [x] **Flow Guardians:** Implemented quick returns for termination interactions (`SessionEndedRequest`), preventing fatal `INVALID_RESPONSE` errors in the Alexa simulator.
+* [x] **Secure Tunneling with Ngrok:** Configured a secure HTTPS local-to-cloud channel.
+* *Infrastructure Fix:* Configured the SSL endpoint in the Alexa Console to explicitly accept wildcard certificates (*"My development endpoint is a sub-domain of a domain that has a wildcard certificate..."*), allowing webhook traffic to bypass Amazon's strict TLS handshake layer.
+
+
 
 ### Phase 3: Last.fm API Core Integration
 
-* [ ] **Last.fm Developer Setup:** Acquire `API Key` and `Shared Secret`.
-* [ ] **Environment Variables:** Securely store Last.fm credentials using .NET User Secrets or `appsettings.json` (do not commit to version control).
-* [ ] **Last.fm Authentication Flow (Web Auth):**
-* Implement a method to generate the authentication URL for the user to approve the app.
-* Implement an endpoint to receive the callback `token`.
-* Create the MD5 signature logic required by Last.fm.
-* Exchange the `token` for a permanent `sk` (Session Key) via `auth.getSession`.
+* [x] **Developer Credentials:** Acquired `API Key` and `Shared Secret` keys and securely stored them in `appsettings.Development.json`.
+* [x] **MD5 Cryptographic Signature:** Implemented the `api_sig` generator required by Last.fm for authenticating write requests.
+* *Critical Fix (Error 13):* Adjusted the parameter alphabetical sorting method in `LastFmAuthService` to use `StringComparer.Ordinal`. This guarantees strict ASCII ordering of brackets in batch sending arrays (e.g., `album[0]` vs `track[10]`), resolving the signature rejection error.
 
 
-* [ ] **Scrobble Service:** Create `IScrobbleService` and implement the HTTP POST request to the `track.scrobble` endpoint, utilizing the API signature, timestamp, album/track data, and the Session Key.
-
-### Phase 4: Database & User Mapping
-
-* [ ] **Database Setup:** Install Entity Framework Core (EF Core) and configure a provider (PostgreSQL or SQL Server).
-* [ ] **User Entity Model:** Create a schema to store users.
-* [ ] **Alexa-to-Last.fm Mapping:** - Extract the Amazon `userId` from the `AlexaRequest`.
-* Map this Amazon ID to the specific Last.fm Session Key in the database to allow seamless voice scrobbling without re-authentication.
+* [x] **Web Authentication Flow:** Implemented the `/api/auth/login` (redirecting the user to grant access) and `/api/auth/callback` (retrieving and exchanging the temporary token for the permanent Last.fm `Session Key`) routes.
+* [x] **Album Scrobbling Engine:** Implemented the `ScrobbleAlbumAsync` method to process entire albums.
+* **Metadata Collection:** Queries the `album.getinfo` endpoint to capture the official tracklist and duration of each song.
+* **Time Mathematics (Future Projection):** The engine captures the Unix Timestamp of the exact confirmation moment ("Ground Zero") and projects the timestamp of each subsequent track linearly and progressively (`Previous_Timestamp + Song_Duration`).
+* **Safety Fallback:** Added a rule that assumes 180 seconds (3 minutes) if a track does not have duration data registered in the Last.fm database, protecting the user's timeline against simultaneous duplicates.
+* **Batching:** Groups all tracks into a single structured `POST` payload and dispatches it at once (respecting Last.fm's limit of 50 tracks per batch request).
 
 
 
-### Phase 5: Exposing to the World & Web UI
+### Phase 4: Database & User Mapping (Next Step)
 
-* [ ] **Local Tunnelling:** Set up Ngrok to expose the local `.NET` environment to the public web (HTTPS) and link this URL as the endpoint in the Alexa Developer Console.
-* [ ] **Web Controller:** Create a standard RESTful `WebController` for the future React frontend to trigger manual scrobbles.
-* [ ] **End-to-End Testing:** Perform a full voice command test through an Echo device.
+* [ ] **EF Core Configuration:** Choose and install a database provider (PostgreSQL/SQL Server) for persistence.
+* [ ] **User Entity Modeling:** Create a schema to store encrypted user credentials.
+* [ ] **Alexa-to-Last.fm Mapping:** Retrieve the unique user ID sent in the `System.user.userId` node of the Alexa JSON and map it directly to the associated Last.fm `Session Key` in the database, allowing multiple users to use the skill isolatedly and without re-authentication.
 
----
+### Phase 5: Web UI (React Frontend)
+
+* [ ] **Web Controller:** Create standardized REST endpoints to feed a web dashboard allowing manual vinyl scrobbles.
