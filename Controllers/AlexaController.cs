@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using ScrobblerApi.Models.DTOs;
 using ScrobblerApi.Services;
+using Microsoft.Extensions.Options;
+using ScrobblerApi.Models.Config;
 
 namespace ScrobblerApi.Controllers;
 
@@ -10,10 +12,12 @@ namespace ScrobblerApi.Controllers;
 public class AlexaController : ControllerBase
 {
     private readonly ScrobbleService _scrobbleService;
+    private readonly LastFmSettings _settings;
 
-    public AlexaController(ScrobbleService scrobbleService)
+    public AlexaController(ScrobbleService scrobbleService, IOptions<LastFmSettings> options)
     {
         _scrobbleService = scrobbleService;
+        _settings = options.Value;
     }
 
     [HttpPost("webhook")]
@@ -70,7 +74,7 @@ public class AlexaController : ControllerBase
                     
                     long unixTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     
-                    bool sucesso = await _scrobbleService.ScrobbleAlbumAsync(groupName, vinylName, unixTimestamp);
+                    bool sucesso = await _scrobbleService.ScrobbleAlbumAsync(groupName, vinylName, unixTimestamp, _settings.SessionKey);
 
                     if (sucesso)
                     {

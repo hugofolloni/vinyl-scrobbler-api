@@ -21,6 +21,17 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<LastFmAuthService>();
 builder.Services.AddSingleton<ScrobbleService>();
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:5173") 
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -32,6 +43,8 @@ if (app.Environment.IsDevelopment())
         c.RoutePrefix = string.Empty; 
     });
 }
+
+app.UseCors();
 
 app.MapControllers();
 

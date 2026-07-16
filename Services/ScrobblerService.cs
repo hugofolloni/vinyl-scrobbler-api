@@ -17,7 +17,7 @@ public class ScrobbleService
         _httpClient = httpClient;
     }
 
-    public async Task<bool> ScrobbleAlbumAsync(string artist, string albumName, long startUnixTimestamp)
+    public async Task<bool> ScrobbleAlbumAsync(string artist, string albumName, long startUnixTimestamp, string sessionKey)
     {
         var getInfoUrl = $"{_settings.BaseUrl}?method=album.getinfo&api_key={_settings.ApiKey}&artist={artist}&album={albumName}&format=json";
         var infoResponse = await _httpClient.GetAsync(getInfoUrl);
@@ -39,7 +39,7 @@ public class ScrobbleService
         {
             { "api_key", _settings.ApiKey },
             { "method", "track.scrobble" },
-            { "sk", _settings.SessionKey }
+            { "sk", sessionKey }
         };
 
         long currentTimestamp = startUnixTimestamp;
