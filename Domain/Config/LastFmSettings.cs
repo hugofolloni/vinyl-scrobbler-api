@@ -6,4 +6,5 @@ public class LastFmSettings
     public string SharedSecret { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = string.Empty;
     public string SessionKey { get; set; } = string.Empty;
+    public string Redirect {get; set; } = string.Empty;
 }

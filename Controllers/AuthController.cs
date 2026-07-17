@@ -117,8 +117,7 @@ public class AuthController : ControllerBase
             Console.WriteLine($"\n[LAST.FM AUTH WEB] React logado com sucesso! Usuário: {name}");
             Console.ResetColor();
 
-            // Redireciona de volta para o frontend React (porta padrão do Vite)
-            var reactRedirectUrl = $"http://localhost:5173/?sk={sk}&username={name}";
+            var reactRedirectUrl = $"{_settings.Redirect}/?sk={sk}&username={name}";
             return Redirect(reactRedirectUrl);
         }
 

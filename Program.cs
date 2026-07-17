@@ -3,7 +3,6 @@ using ScrobblerApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Adiciona suporte a Controllers
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -25,12 +24,11 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:5173") 
+        policy.AllowAnyOrigin()
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
 });
-
 
 var app = builder.Build();
 
@@ -43,6 +41,8 @@ if (app.Environment.IsDevelopment())
         c.RoutePrefix = string.Empty; 
     });
 }
+
+app.UseRouting();
 
 app.UseCors();
 
