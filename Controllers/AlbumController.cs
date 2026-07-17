@@ -15,10 +15,13 @@ public class AlbumController : ControllerBase
     private readonly LastFmSettings _settings;
     private readonly HttpClient _httpClient;
     private readonly SpotifyAuthService _spotifyAuth;
-
-    public AlbumController(IOptions<LastFmSettings> options, HttpClient httpClient, SpotifyAuthService spotifyAuth)
+    private readonly AlbumSettings _albumSettings;
+    private readonly LastFmSettings _lastFmSettings;
+    public AlbumController(IOptions<LastFmSettings> lastFmOptions, IOptions<AlbumSettings> albumOptions, HttpClient httpClient, SpotifyAuthService spotifyAuth)
     {
-        _settings = options.Value;
+        _lastFmSettings = lastFmOptions.Value;
+        _albumSettings = albumOptions.Value;
+        _settings = lastFmOptions.Value;
         _httpClient = httpClient;
         _spotifyAuth = spotifyAuth;
     }
@@ -28,50 +31,52 @@ public class AlbumController : ControllerBase
     {
         if (string.IsNullOrEmpty(q)) return Ok(new List<AlbumSearchResult>());
 
-        var token = await _spotifyAuth.GetAccessTokenAsync();
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        var spotifyUrl = $"https://api.spotify.com/v1/search?q={Uri.EscapeDataString(q)}&type=album&limit=10";
-        var response = await _httpClient.GetAsync(spotifyUrl);
-        if (!response.IsSuccessStatusCode) return BadRequest("Error searching Spotify.");
-
-        var content = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(content);
-        
-        var results = new List<AlbumSearchResult>();
-        string query = q.ToLower();
-
-        if (doc.RootElement.TryGetProperty("albums", out var albums) && albums.TryGetProperty("items", out var items))
+        if (_albumSettings.Provider?.ToLower() == "spotify")
         {
-            foreach (var item in items.EnumerateArray())
+            var token = await _spotifyAuth.GetAccessTokenAsync();
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var spotifyUrl = $"https://api.spotify.com/v1/search?q={Uri.EscapeDataString(q)}&type=album&limit=10";
+            var response = await _httpClient.GetAsync(spotifyUrl);
+            if (!response.IsSuccessStatusCode) return BadRequest("Error searching Spotify.");
+
+            var content = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(content);
+            var results = new List<AlbumSearchResult>();
+
+            if (doc.RootElement.TryGetProperty("albums", out var albums) && albums.TryGetProperty("items", out var items))
             {
-                var albumId = item.GetProperty("id").GetString();
-                var album = new AlbumSearchResult
+                foreach (var item in items.EnumerateArray())
                 {
-                    Name = item.GetProperty("name").GetString() ?? "",
-                    Artist = item.GetProperty("artists")[0].GetProperty("name").GetString() ?? "",
-                    ImageUrl = item.GetProperty("images")[0].GetProperty("url").GetString() ?? "",
-                    Popularity = 0
-                };
-
-                var detailUrl = $"https://api.spotify.com/v1/albums/{albumId}";
-                var detailResponse = await _httpClient.GetAsync(detailUrl);
-                if (detailResponse.IsSuccessStatusCode)
-                {
-                    var detailContent = await detailResponse.Content.ReadAsStringAsync();
-                    using var detailDoc = JsonDocument.Parse(detailContent);
-                    album.Popularity = detailDoc.RootElement.TryGetProperty("popularity", out var p) ? p.GetInt32() : 0;
+                    var albumId = item.GetProperty("id").GetString();
+                    var album = new AlbumSearchResult { Name = item.GetProperty("name").GetString() ?? "", Artist = item.GetProperty("artists")[0].GetProperty("name").GetString() ?? "", ImageUrl = item.GetProperty("images")[0].GetProperty("url").GetString() ?? "", Popularity = 0 };
+                    var detailUrl = $"https://api.spotify.com/v1/albums/{albumId}";
+                    var detailResponse = await _httpClient.GetAsync(detailUrl);
+                    if (detailResponse.IsSuccessStatusCode) { var detailContent = await detailResponse.Content.ReadAsStringAsync(); using var detailDoc = JsonDocument.Parse(detailContent); album.Popularity = detailDoc.RootElement.TryGetProperty("popularity", out var p) ? p.GetInt32() : 0; }
+                    results.Add(album);
                 }
-                results.Add(album);
             }
+            string query = q.ToLower();
+            return Ok(results.OrderByDescending(x => { double score = x.Popularity; if (x.Name.ToLower().Contains(query)) score += 100; if (x.Name.ToLower() == query) score += 200; return score; }).ToList());
         }
-
-        return Ok(results.OrderByDescending(x => {
-            double score = x.Popularity;
-            if (x.Name.ToLower().Contains(query)) score += 100;
-            if (x.Name.ToLower() == query) score += 200; 
-            return score;
-        }).ToList());
+        else
+        {
+            var url = $"{_lastFmSettings.BaseUrl}?method=album.search&album={Uri.EscapeDataString(q)}&api_key={_lastFmSettings.ApiKey}&format=json";
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode) return BadRequest();
+            var content = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(content);
+            var results = new List<AlbumSearchResult>();
+            if (doc.RootElement.TryGetProperty("results", out var resultsProp) && resultsProp.TryGetProperty("albummatches", out var matchesProp) && matchesProp.TryGetProperty("album", out var albumArray))
+            {
+                foreach (var album in albumArray.EnumerateArray())
+                {
+                    var item = new AlbumSearchResult { Name = album.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "", Artist = album.TryGetProperty("artist", out var a) ? a.GetString() ?? "" : "", ImageUrl = "" };
+                    if (album.TryGetProperty("image", out var imgArray) && imgArray.GetArrayLength() > 2) item.ImageUrl = imgArray[2].TryGetProperty("#text", out var t) ? t.GetString() ?? "" : "";
+                    results.Add(item);
+                }
+            }
+            return Ok(results);
+        }
     }
 
     [HttpGet("info")]

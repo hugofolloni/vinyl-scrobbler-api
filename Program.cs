@@ -20,6 +20,8 @@ builder.Services.AddHttpClient();
 builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection("Spotify"));
 builder.Services.AddSingleton<SpotifyAuthService>();
 
+builder.Services.Configure<AlbumSettings>(builder.Configuration.GetSection("AlbumSettings"));
+
 builder.Services.AddSingleton<LastFmAuthService>();
 builder.Services.AddSingleton<ScrobbleService>();
 
@@ -50,5 +52,8 @@ app.UseRouting();
 app.UseCors();
 
 app.MapControllers();
+
+// var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+// app.Run($"http://0.0.0.0:{port}");
 
 app.Run();
