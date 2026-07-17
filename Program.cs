@@ -17,6 +17,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.Configure<LastFmSettings>(builder.Configuration.GetSection("LastFm"));
 builder.Services.AddHttpClient();
 
+builder.Services.Configure<SpotifySettings>(builder.Configuration.GetSection("Spotify"));
+builder.Services.AddSingleton<SpotifyAuthService>();
+
 builder.Services.AddSingleton<LastFmAuthService>();
 builder.Services.AddSingleton<ScrobbleService>();
 
